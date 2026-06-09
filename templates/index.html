@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDF Semantic Search</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg:        #0d0d0d;
+      --surface:   #161616;
+      --border:    #2a2a2a;
+      --accent:    #e8ff47;
+      --accent2:   #47d4ff;
+      --text:      #e0e0e0;
+      --muted:     #6b6b6b;
+      --error:     #ff4747;
+      --success:   #47ff9a;
+      --mono:      'IBM Plex Mono', monospace;
+      --sans:      'IBM Plex Sans', sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+    }
+
+    /* ── Header ── */
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 1.25rem 2rem;
+      display: flex;
+      align-items: baseline;
+      gap: 1rem;
+    }
+    header h1 {
+      font-family: var(--mono);
+      font-size: 1rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+      text-transform: uppercase;
+    }
+    header span {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: var(--muted);
+    }
+
+    /* ── Main layout ── */
+    main {
+      display: grid;
+      grid-template-columns: 380px 1fr;
+      height: calc(100vh - 57px);
+    }
+
+    /* ── Left panel ── */
+    .panel-left {
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .panel-section {
+      padding: 1.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .label {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+    }
+
+    /* ── Upload zone ── */
+    #drop-zone {
+      border: 1px dashed var(--border);
+      border-radius: 2px;
+      padding: 2rem 1rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      position: relative;
+    }
+    #drop-zone:hover, #drop-zone.drag-over {
+      border-color: var(--accent);
+      background: rgba(232,255,71,0.04);
+    }
+    #drop-zone input[type=file] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    #drop-zone .upload-icon {
+      font-size: 1.5rem;
+      margin-bottom: 0.5rem;
+      color: var(--muted);
+    }
+    #drop-zone p {
+      font-size: 0.8rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    #drop-zone .filename {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--accent);
+      margin-top: 0.5rem;
+    }
+
+    /* ── Btn ── */
+    .btn {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 0.6rem 1.25rem;
+      border: 1px solid var(--accent);
+      background: transparent;
+      color: var(--accent);
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+      border-radius: 1px;
+      width: 100%;
+      margin-top: 0.75rem;
+    }
+    .btn:hover:not(:disabled) { background: var(--accent); color: var(--bg); }
+    .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    .btn.secondary {
+      border-color: var(--border);
+      color: var(--muted);
+    }
+    .btn.secondary:hover:not(:disabled) { background: var(--border); color: var(--text); }
+
+    /* ── Status bar ── */
+    #status-bar {
+      padding: 1rem 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      min-height: 56px;
+      border-bottom: 1px solid var(--border);
+    }
+    .dot {
+      width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+    }
+    .dot.idle    { background: var(--muted); }
+    .dot.queued  { background: var(--accent2); animation: pulse 1s infinite; }
+    .dot.processing { background: var(--accent); animation: pulse 0.7s infinite; }
+    .dot.ready   { background: var(--success); }
+    .dot.error   { background: var(--error); }
+    @keyframes pulse {
+      0%,100% { opacity: 1; } 50% { opacity: 0.3; }
+    }
+    #status-text {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+
+    /* ── Stats ── */
+    #stats-panel {
+      padding: 1.25rem 1.5rem;
+      flex: 1;
+      overflow-y: auto;
+    }
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.4rem 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.78rem;
+    }
+    .stat-row:last-child { border-bottom: none; }
+    .stat-key { color: var(--muted); font-family: var(--mono); font-size: 0.68rem; }
+    .stat-val { font-family: var(--mono); color: var(--accent2); }
+
+    /* ── Right panel ── */
+    .panel-right {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Query form ── */
+    .query-bar {
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 0.75rem;
+      align-items: flex-end;
+    }
+    .query-bar .input-group {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+    #query-input {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 1px;
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 0.9rem;
+      padding: 0.65rem 0.9rem;
+      outline: none;
+      transition: border-color 0.15s;
+      width: 100%;
+    }
+    #query-input:focus { border-color: var(--accent); }
+    #query-input::placeholder { color: var(--muted); }
+    #query-input:disabled { opacity: 0.4; }
+
+    .top-n-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .top-n-row label {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    #top-n {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      padding: 0.35rem 0.5rem;
+      border-radius: 1px;
+      outline: none;
+      width: 56px;
+    }
+    .btn-search {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 0.65rem 1.5rem;
+      border: 1px solid var(--accent);
+      background: transparent;
+      color: var(--accent);
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+      border-radius: 1px;
+      white-space: nowrap;
+    }
+    .btn-search:hover:not(:disabled) { background: var(--accent); color: var(--bg); }
+    .btn-search:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    /* ── Results area ── */
+    #results-area {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1.5rem;
+    }
+
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      gap: 0.75rem;
+      color: var(--muted);
+    }
+    .empty-state .big-icon { font-size: 2.5rem; opacity: 0.3; }
+    .empty-state p { font-size: 0.82rem; text-align: center; line-height: 1.6; max-width: 300px; }
+
+    .results-header {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .results-header::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    .result-card {
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 0.75rem;
+      position: relative;
+      transition: border-color 0.15s;
+      animation: fadeUp 0.3s ease both;
+    }
+    .result-card:hover { border-color: #3a3a3a; }
+    .answer-card {
+      border: 1px solid rgba(232,255,71,0.45);
+      border-radius: 2px;
+      padding: 1.1rem 1.25rem;
+      margin-bottom: 1.25rem;
+      background: rgba(232,255,71,0.04);
+      animation: fadeUp 0.25s ease both;
+    }
+    .answer-label {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      margin-bottom: 0.7rem;
+    }
+    .answer-text {
+      font-size: 0.95rem;
+      line-height: 1.7;
+      color: var(--text);
+      white-space: pre-wrap;
+    }
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 0.5rem;
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid rgba(232,255,71,0.18);
+    }
+    .metric-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.75rem;
+      border: 1px solid var(--border);
+      padding: 0.45rem 0.55rem;
+      background: rgba(0,0,0,0.16);
+    }
+    .metric-key {
+      font-family: var(--mono);
+      font-size: 0.62rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .metric-val {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--accent2);
+      white-space: nowrap;
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .result-meta {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.6rem;
+    }
+    .rank-badge {
+      font-family: var(--mono);
+      font-size: 0.6rem;
+      font-weight: 600;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 0.15rem 0.45rem;
+      border-radius: 1px;
+    }
+    .similarity-bar-wrap {
+      flex: 1;
+      height: 3px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .similarity-bar {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 2px;
+      transition: width 0.6s ease;
+    }
+    .distance-val {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .result-text {
+      font-size: 0.84rem;
+      line-height: 1.65;
+      color: #c8c8c8;
+    }
+
+    .spinner {
+      width: 18px; height: 18px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: inline-block;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .error-msg {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--error);
+      background: rgba(255,71,71,0.06);
+      border: 1px solid rgba(255,71,71,0.2);
+      padding: 0.75rem 1rem;
+      border-radius: 2px;
+      margin-bottom: 1rem;
+    }
+
+    /* ── Progress bar ── */
+    #progress-wrap {
+      height: 2px;
+      background: var(--border);
+      overflow: hidden;
+      display: none;
+    }
+    #progress-bar {
+      height: 100%;
+      background: var(--accent);
+      width: 0%;
+      transition: width 0.4s ease;
+    }
+    #progress-wrap.active { display: block; }
+
+    /* scrollbar */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>PDF // Semantic Search</h1>
+  <span>custom skip-gram embeddings · chromadb</span>
+</header>
+
+<main>
+  <!-- ── LEFT PANEL ── -->
+  <aside class="panel-left">
+    <div class="panel-section">
+      <div class="label">01 // Upload PDF</div>
+      <div id="drop-zone">
+        <input type="file" id="file-input" accept=".pdf" />
+        <div class="upload-icon">⬆</div>
+        <p>Drop a PDF here<br/>or click to browse</p>
+        <div class="filename" id="chosen-filename"></div>
+      </div>
+      <button class="btn" id="upload-btn" disabled>Process PDF</button>
+      <button class="btn secondary" id="reset-btn" style="display:none">Upload New PDF</button>
+    </div>
+
+    <div id="progress-wrap"><div id="progress-bar"></div></div>
+
+    <div id="status-bar">
+      <div class="dot idle" id="status-dot"></div>
+      <div id="status-text">No PDF loaded</div>
+    </div>
+
+    <div id="stats-panel"></div>
+  </aside>
+
+  <!-- ── RIGHT PANEL ── -->
+  <section class="panel-right">
+    <div class="query-bar">
+      <div class="input-group">
+        <div class="top-n-row">
+          <label>Results</label>
+          <input type="number" id="top-n" value="5" min="1" max="20" />
+        </div>
+        <input
+          type="text"
+          id="query-input"
+          placeholder="Ask anything about the PDF…"
+          disabled
+          autocomplete="off"
+        />
+      </div>
+      <button class="btn-search" id="search-btn" disabled>Search</button>
+    </div>
+
+    <div id="results-area">
+      <div class="empty-state" id="empty-state">
+        <div class="big-icon">◈</div>
+        <p>Upload and process a PDF to start querying it semantically.</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+  // ── State ──
+  let sessionId = null;
+  let pollInterval = null;
+  let selectedFile = null;
+
+  // ── DOM refs ──
+  const dropZone      = document.getElementById('drop-zone');
+  const fileInput     = document.getElementById('file-input');
+  const chosenFilename= document.getElementById('chosen-filename');
+  const uploadBtn     = document.getElementById('upload-btn');
+  const resetBtn      = document.getElementById('reset-btn');
+  const statusDot     = document.getElementById('status-dot');
+  const statusText    = document.getElementById('status-text');
+  const statsPanel    = document.getElementById('stats-panel');
+  const progressWrap  = document.getElementById('progress-wrap');
+  const progressBar   = document.getElementById('progress-bar');
+  const queryInput    = document.getElementById('query-input');
+  const topNInput     = document.getElementById('top-n');
+  const searchBtn     = document.getElementById('search-btn');
+  const resultsArea   = document.getElementById('results-area');
+
+  // ── File selection ──
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) selectFile(fileInput.files[0]);
+  });
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    if (e.dataTransfer.files[0]?.name.toLowerCase().endsWith('.pdf'))
+      selectFile(e.dataTransfer.files[0]);
+  });
+
+  function selectFile(file) {
+    selectedFile = file;
+    chosenFilename.textContent = file.name;
+    uploadBtn.disabled = false;
+  }
+
+  // ── Upload ──
+  uploadBtn.addEventListener('click', async () => {
+    if (!selectedFile) return;
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+
+    setStatus('queued', 'Uploading…');
+    uploadBtn.disabled = true;
+    fileInput.disabled = true;
+    progressWrap.classList.add('active');
+    animateProgress(0, 15, 400);
+
+    try {
+      const res = await fetch('/upload', { method: 'POST', body: formData });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.detail); }
+      const data = await res.json();
+      sessionId = data.session_id;
+      setStatus('processing', `Training embeddings on <b>${data.filename}</b>…<br/><span style="font-size:0.65rem;color:#555">This can take several minutes</span>`);
+      animateProgress(15, 40, 8000);
+      pollInterval = setInterval(pollStatus, 3000);
+    } catch (err) {
+      setStatus('error', `Upload failed: ${err.message}`);
+      progressWrap.classList.remove('active');
+      uploadBtn.disabled = false;
+      fileInput.disabled = false;
+    }
+  });
+
+  // ── Poll status ──
+  async function pollStatus() {
+    if (!sessionId) return;
+    try {
+      const res = await fetch(`/status/${sessionId}`);
+      const data = await res.json();
+
+      if (data.status === 'ready') {
+        clearInterval(pollInterval);
+        animateProgress(40, 100, 600);
+        setTimeout(() => progressWrap.classList.remove('active'), 800);
+        setStatus('ready', `Ready — <b>${data.filename}</b>`);
+        renderStats(data.stats);
+        queryInput.disabled = false;
+        searchBtn.disabled = false;
+        queryInput.focus();
+        resetBtn.style.display = 'block';
+        uploadBtn.style.display = 'none';
+        showEmptySearchState();
+      } else if (data.status === 'error') {
+        clearInterval(pollInterval);
+        setStatus('error', `Error: ${data.error}`);
+        progressWrap.classList.remove('active');
+        uploadBtn.disabled = false;
+        fileInput.disabled = false;
+      } else {
+        // still processing — nudge progress bar
+        const current = parseFloat(progressBar.style.width) || 40;
+        if (current < 90) animateProgress(current, current + 3, 3000);
+      }
+    } catch (_) { /* network blip — ignore */ }
+  }
+
+  // ── Search ──
+  searchBtn.addEventListener('click', runSearch);
+  queryInput.addEventListener('keydown', e => { if (e.key === 'Enter') runSearch(); });
+
+  async function runSearch() {
+    const query = queryInput.value.trim();
+    if (!query || !sessionId) return;
+
+    searchBtn.disabled = true;
+    searchBtn.innerHTML = '<span class="spinner"></span>';
+    showLoading();
+
+    const formData = new FormData();
+    formData.append('session_id', sessionId);
+    formData.append('query_text', query);
+    formData.append('top_n', topNInput.value || 5);
+
+    try {
+      const res = await fetch('/query', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail);
+      renderResults(data.results, data.query, data.answer, data.metrics);
+    } catch (err) {
+      renderError(err.message);
+    } finally {
+      searchBtn.disabled = false;
+      searchBtn.textContent = 'Search';
+    }
+  }
+
+  // ── Reset ──
+  resetBtn.addEventListener('click', () => {
+    sessionId = null;
+    selectedFile = null;
+    fileInput.value = '';
+    chosenFilename.textContent = '';
+    fileInput.disabled = false;
+    uploadBtn.disabled = true;
+    uploadBtn.style.display = 'block';
+    resetBtn.style.display = 'none';
+    queryInput.disabled = true;
+    queryInput.value = '';
+    searchBtn.disabled = true;
+    statsPanel.innerHTML = '';
+    setStatus('idle', 'No PDF loaded');
+    showInitialState();
+  });
+
+  // ── UI helpers ──
+  function setStatus(state, html) {
+    statusDot.className = `dot ${state}`;
+    statusText.innerHTML = html;
+  }
+
+  function animateProgress(from, to, duration) {
+    progressBar.style.transition = `width ${duration}ms ease`;
+    progressBar.style.width = to + '%';
+  }
+
+  function renderStats(stats) {
+    if (!stats) return;
+    const llm = stats.llm_metrics || {};
+    const rows = [
+      ['Pages',          stats.pages],
+      ['Chunks',         stats.chunks],
+      ['Vocabulary',     stats.vocab_size?.toLocaleString()],
+      ['Training pairs', stats.training_pairs?.toLocaleString()],
+      ['LLM trained',    stats.llm_trained ? 'yes' : 'no'],
+      ['LLM samples',    llm.samples?.toLocaleString()],
+      ['LLM loss',       fmtMetric(llm.loss)],
+      ['LLM accuracy',   pctMetric(llm.accuracy)],
+      ['LLM perplexity', fmtMetric(llm.perplexity)],
+    ];
+    statsPanel.innerHTML = `
+      <div style="padding:1.25rem 1.5rem">
+        <div class="label">02 // Index Stats</div>
+        ${rows.map(([k,v]) => `
+          <div class="stat-row">
+            <span class="stat-key">${k}</span>
+            <span class="stat-val">${v ?? '—'}</span>
+          </div>`).join('')}
+      </div>`;
+  }
+
+  function showInitialState() {
+    resultsArea.innerHTML = `
+      <div class="empty-state" id="empty-state">
+        <div class="big-icon">◈</div>
+        <p>Upload and process a PDF to start querying it semantically.</p>
+      </div>`;
+  }
+
+  function showEmptySearchState() {
+    resultsArea.innerHTML = `
+      <div class="empty-state">
+        <div class="big-icon">⌕</div>
+        <p>PDF is ready. Type a query above and press Search.</p>
+      </div>`;
+  }
+
+  function showLoading() {
+    resultsArea.innerHTML = `
+      <div class="empty-state">
+        <div class="spinner" style="width:24px;height:24px"></div>
+        <p style="margin-top:0.5rem">Searching and generating answer…</p>
+      </div>`;
+  }
+
+  function renderError(msg) {
+    resultsArea.innerHTML = `<div class="error-msg">⚠ ${msg}</div>`;
+  }
+
+  function renderResults(results, query, answer, metrics) {
+    if (!results?.length) {
+      resultsArea.innerHTML = `<div class="empty-state"><p>No results found for <em>${query}</em>.</p></div>`;
+      return;
+    }
+
+    // Cosine distance: lower = more similar. Map to 0-100% similarity bar.
+    const maxDist = Math.max(...results.map(r => r.distance));
+
+    resultsArea.innerHTML = `
+      <div class="answer-card">
+        <div class="answer-label">Generated Answer</div>
+        <div class="answer-text">${escHtml(answer || 'No answer generated.')}</div>
+        ${renderMetrics(metrics)}
+      </div>
+      <div class="results-header">${results.length} retrieved chunks for "${escHtml(query)}"</div>
+      ${results.map((r, i) => {
+        const similarity = maxDist > 0 ? (1 - r.distance / maxDist) * 100 : 100;
+        return `
+          <div class="result-card" style="animation-delay:${i * 60}ms">
+            <div class="result-meta">
+              <span class="rank-badge">#${i + 1}</span>
+              <div class="similarity-bar-wrap">
+                <div class="similarity-bar" style="width:${similarity.toFixed(1)}%"></div>
+              </div>
+              <span class="distance-val">dist ${r.distance}</span>
+            </div>
+            <div class="result-text">${escHtml(r.text)}</div>
+          </div>`;
+      }).join('')}`;
+  }
+
+  function escHtml(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function fmtMetric(value) {
+    if (value === null || value === undefined || Number.isNaN(Number(value))) return '—';
+    return Number(value).toFixed(4);
+  }
+
+  function pctMetric(value) {
+    if (value === null || value === undefined || Number.isNaN(Number(value))) return '—';
+    return `${(Number(value) * 100).toFixed(1)}%`;
+  }
+
+  function renderMetrics(metrics) {
+    if (!metrics) return '';
+    const rows = [
+      ['Est. accuracy', pctMetric(metrics.estimated_accuracy)],
+      ['Grounding', pctMetric(metrics.context_grounding)],
+      ['Query coverage', pctMetric(metrics.query_coverage)],
+      ['Answer/context', pctMetric(metrics.answer_context_similarity)],
+      ['Retrieval conf.', pctMetric(metrics.retrieval_confidence)],
+      ['Avg distance', fmtMetric(metrics.avg_retrieval_distance)],
+      ['Best distance', fmtMetric(metrics.best_retrieval_distance)],
+      ['Grounded words', `${metrics.grounded_word_count ?? 0}/${metrics.answer_word_count ?? 0}`],
+    ];
+    return `
+      <div class="metrics-grid">
+        ${rows.map(([k, v]) => `
+          <div class="metric-row">
+            <span class="metric-key">${escHtml(k)}</span>
+            <span class="metric-val">${escHtml(v)}</span>
+          </div>`).join('')}
+      </div>`;
+  }
+</script>
+</body>
+</html>

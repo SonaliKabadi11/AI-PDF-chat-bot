@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.Python
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env
+.env.*
+
+# Packaging and test artifacts
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# App-generated files
+uploads/
+models/
+tokenizers/
+vector_dbs/
+chroma_dbs/
+
+# Logs
+*.log
+
+# Notebook checkpoints
+.ipynb_checkpoints/
