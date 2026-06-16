@@ -1,6 +1,7 @@
 """
-PDF Semantic Search Pipeline — stateless, session-scoped functions.
-Each uploaded PDF gets its own session_id so models/databases don't collide.
+PDF Semantic Search Pipeline — stateless, session-scoped 
+functions.Each uploaded PDF gets its own session_id 
+so models/databases don't collide.
 """
 
 from __future__ import annotations
@@ -81,6 +82,7 @@ def get_chunks(text: str, cfg: ChunkingConfig) -> List[str]:
 
 # ---------------------------------------------------------------------------
 # 3. Tokenisation
+# The tokenizer maps words to integer IDs.
 # ---------------------------------------------------------------------------
 
 def build_tokenizer(sentences: List[str]) -> Tokenizer:
@@ -103,7 +105,7 @@ def load_tokenizer(path: Path) -> Tokenizer:
 
 
 # ---------------------------------------------------------------------------
-# 4. Training-data Generation
+# 4. Skip Gram Training-data Generation
 # ---------------------------------------------------------------------------
 
 def generate_training_data(
@@ -547,35 +549,26 @@ def _definition_sentence_score(query_text: str, sentence: str, distance: float) 
     useful_terms = ("model", "architecture", "attention", "self-attention", "mechanism")
     score += sum(0.35 for term in useful_terms if term in lowered)
 
-    if "decoder" in query_terms:
-        decoder_terms = (
-            "decoder stack",
-            "decoder is also composed",
-            "decoder composed",
-            "decoder layer",
-            "decoder inserts",
-            "encoder stack",
-            "multi-head attention over the output",
-            "self-attention layers in the decoder",
-            "feed-forward network",
-            "up to and including that position",
-        )
-        score += sum(1.2 for term in decoder_terms if term in lowered)
+    # if "decoder" in query_terms:
+    #     decoder_terms = (
+           
+    #     )
+    #     score += sum(1.2 for term in decoder_terms if term in lowered)
 
-    weak_terms = (
-        "bleu",
-        "configuration",
-        "dropout",
-        "gpu",
-        "gpus",
-        "score",
-        "table",
-        "trained for",
-        "training took",
-    )
-    score -= sum(1.5 for term in weak_terms if term in lowered)
-    if "decoder" in query_terms and "encoder and decoder stacks encoder" in lowered:
-        score -= 4.0
+    # weak_terms = (
+    #     "bleu",
+    #     "configuration",
+    #     "dropout",
+    #     "gpu",
+    #     "gpus",
+    #     "score",
+    #     "table",
+    #     "trained for",
+    #     "training took",
+    # )
+    # score -= sum(1.5 for term in weak_terms if term in lowered)
+    # if "decoder" in query_terms and "encoder and decoder stacks encoder" in lowered:
+    #     score -= 4.0
 
     word_count = len(re.findall(r"[a-z0-9]+", sentence.lower()))
     if word_count < 6:
@@ -998,7 +991,7 @@ def store_sentence_vectors(
     collection_name: str,
     batch_size: int = 500,
 ) -> None:
-    raw_sentences = [s.strip() for s in full_text.split(".") if len(s.strip()) > 5]
+    raw_sentences = [s.strip() for s in full_text.split(".") if len(s.strip()) > 3]
     sentences_to_insert, sentence_vectors, sentence_ids = [], [], []
 
     for idx, sentence in enumerate(raw_sentences):
