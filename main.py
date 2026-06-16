@@ -24,6 +24,7 @@ from fastapi.templating import Jinja2Templates
 from config import PipelineConfig
 from pipeline import (
     evaluate_answer_metrics,
+    extractive_fallback_answer,
     generate_answer,
     get_embedding_weights,
     ingest_pdf,
@@ -31,6 +32,7 @@ from pipeline import (
     load_model_from_path,
     load_tokenizer,
     search_pdf,
+    should_use_extractive_answer,
 )
 
 
@@ -152,7 +154,7 @@ async def query(session_id: str = Form(...), query_text: str = Form(...), top_n:
                 "Upload and process the PDF again to train the answer generator."
             )
         llm_model = load_llm_model(llm_path)
-        answer = generate_answer(query_text, results, llm_model, tokenizer, cfg.llm)
+        answer, generation_info = generate_answer(query_text, results, llm_model, tokenizer, cfg.llm)
         metrics = evaluate_answer_metrics(
             query_text,
             answer,
@@ -162,6 +164,28 @@ async def query(session_id: str = Form(...), query_text: str = Form(...), top_n:
             weights,
             cfg.embedding.embedding_dim,
         )
+        metrics.update(generation_info)
+        use_extractive, reason = should_use_extractive_answer(metrics, cfg.llm)
+        if use_extractive and not generation_info.get("fallback_used"):
+            answer = extractive_fallback_answer(query_text, results)
+            metrics = evaluate_answer_metrics(
+                query_text,
+                answer,
+                results,
+                tokenizer,
+                vocab_size,
+                weights,
+                cfg.embedding.embedding_dim,
+            )
+            metrics.update(
+                {
+                    "answer_source": "extractive",
+                    "fallback_used": True,
+                    "fallback_reason": reason,
+                    "generated_token_count": generation_info.get("generated_token_count", 0),
+                    "query_type": generation_info.get("query_type", "general"),
+                }
+            )
         return JSONResponse(
             {
                 "answer": answer,

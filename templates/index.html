@@ -779,10 +779,16 @@
       ['Grounding', pctMetric(metrics.context_grounding)],
       ['Query coverage', pctMetric(metrics.query_coverage)],
       ['Answer/context', pctMetric(metrics.answer_context_similarity)],
+      ['Fluency', pctMetric(metrics.fluency_score)],
       ['Retrieval conf.', pctMetric(metrics.retrieval_confidence)],
       ['Avg distance', fmtMetric(metrics.avg_retrieval_distance)],
       ['Best distance', fmtMetric(metrics.best_retrieval_distance)],
       ['Grounded words', `${metrics.grounded_word_count ?? 0}/${metrics.answer_word_count ?? 0}`],
+      ['Answer source', metrics.answer_source || 'transformer'],
+      ['Fallback used', metrics.fallback_used ? 'yes' : 'no'],
+      ['Fallback reason', metrics.fallback_reason || '—'],
+      ['Query type', metrics.query_type || 'general'],
+      ['Repeat detected', metrics.repetition_detected ? 'yes' : 'no'],
     ];
     return `
       <div class="metrics-grid">
